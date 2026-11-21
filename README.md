@@ -14,15 +14,17 @@ Barra de pesquisa e ações rápidas para Windows e Linux. Encontre aplicativos 
 
 Consulte [Releases](https://github.com/eritongrnascimento-svg/ActionBar/releases) para a disponibilidade dos arquivos e leia o [guia Linux](linux/README.md) para os requisitos e as diferenças entre desktops. Os scripts para compilar os instaladores estão em [packaging](packaging).
 
-## Capturas da versão Linux
+## Capturas da versão Windows
 
-Capturas reais da edição 0.6.2 no Ubuntu 26.04. Os arquivos exibidos são dados de demonstração.
-
-| Player e fila de músicas | Terminal interativo |
+| Barra de pesquisa | Itens recentes |
 | --- | --- |
-| ![Player, fila e controles de reprodução](docs/musica-linux.png) | ![Terminal da barra com uma sessão interativa](docs/terminal-linux.png) |
-| **Busca e ações** | **OCR local** |
-| ![Busca de papéis de parede na barra](docs/busca-linux.png) | ![Resultado do OCR de uma imagem de demonstração](docs/ocr-linux.png) |
+| ![Barra de pesquisa do ActionBar](docs/busca-windows.jpg) | ![Lista de itens recentes](docs/recentes-windows.jpg) |
+| **Armazenamento** | **Controles de volume** |
+| ![Espaço disponível por unidade](docs/armazenamento-windows.jpg) | ![Controles de volume e microfone](docs/volume-windows.jpg) |
+
+**Navegação dentro da barra**
+
+![Aba Internet aberta junto à barra do ActionBar](docs/internet-windows.jpg)
 
 ## Guia da versão Windows 0.6.2
 
