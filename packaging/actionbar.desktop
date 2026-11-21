@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ActionBar
+Comment=Barra de pesquisa e ações rápidas
+Exec=actionbar
+Icon=actionbar
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+

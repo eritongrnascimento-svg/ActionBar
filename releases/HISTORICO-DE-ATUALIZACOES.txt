@@ -1,0 +1,28 @@
+HISTÓRICO DE ATUALIZAÇÕES — ActionBar
+======================================
+
+ActionBar 0.5.0  (19/11/2026 09:20)
+  - Novo nome: ActionBar, com ícone "AB" neon (executável, bandeja e janelas)
+  - Título "ActionBar" centralizado com neon animado e borda neon
+  - Busca de arquivos por relevância: pastas com vídeos/fotos sobem; código-fonte, pastas de programas e arquivos técnicos descem
+  - Letra da unidade prioriza resultados: "obs d", "d: obs", "obs no d"
+  - "pasta X" e "arquivo X" filtram o tipo
+  - Miniaturas reais nos resultados de arquivos
+  - Setas ← → e Tab trocam de aba mantendo a pesquisa
+  - Barras de Volume e Volume do microfone (arrastar, roda do mouse, setas)
+  - A pesquisa continua completa enquanto o índice é atualizado
+  - Executável único: não precisa instalar o .NET
+
+Barra Inteligente 0.4  (18/11/2026)
+  - Registro único de ações; atalhos antigos continuam funcionando
+  - Busca tolerante a erros de digitação
+  - Ações escondidas quando o PC não tem o recurso (Wi-Fi, Bluetooth, segundo monitor)
+  - Áudio: trocar saída/entrada padrão, silenciar microfone
+  - Janelas: alternar para janela aberta, encaixar, maximizar, sempre no topo, desktops virtuais
+  - Processos: encerrar programa com confirmação, ver os que mais usam memória, reiniciar Explorer
+  - Rede: copiar IP local/público, limpar DNS, renovar IP, ping
+  - Desligar/reiniciar agendado, cancelar, encerrar sessão
+
+Barra Inteligente 0.3
+  - Pesquisa de apps, arquivos, configurações do Windows e web
+  - Calculadora e conversões, workspaces com layouts, monitor de CPU/RAM/GPU, clima
