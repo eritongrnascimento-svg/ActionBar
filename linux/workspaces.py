@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QListWidget, QListWidgetItem
 
 
@@ -51,8 +51,50 @@ class WorkspacesPanel:
         except (OSError, ValueError):
             self.groups = {}
         self.group_list.addItems(sorted(self.groups))
+        if available():
+            self.center_baseline = None
+            self.center_busy = False
+            self.center_poll = QTimer(self)
+            self.center_poll.setInterval(1700)
+            self.center_poll.timeout.connect(self.center_new_windows)
+            self.center_poll.start()
         if not available():
             self.workspace_status.setText("Encaixe e grupos requerem wmctrl numa sessão X11. O Wayland restringe o controle de janelas de outros aplicativos.")
+
+    def center_new_windows(self):
+        mode = self.preferences.value("center_windows", 0, int)
+        if not mode:
+            self.center_baseline = None
+            return
+        if self.center_busy:
+            return
+        previous = self.center_baseline
+        excluded = set(self.preferences.value("center_exclusions", [], list)) if mode == 2 else set()
+        screens = [screen.availableGeometry() for screen in QApplication.screens()]
+
+        def scan():
+            try:
+                windows = current_windows()
+                if previous is not None:
+                    for address, program, _, (x, y, width, height) in windows:
+                        if address in previous or excluded.intersection([program.casefold(), *program.casefold().split(".")]):
+                            continue
+                        area = next((screen for screen in screens if screen.contains(x + width // 2, y + height // 2)), screens[0])
+                        if width < area.width() and height < area.height():
+                            try:
+                                wmctrl("-ir", address, "-e", f"0,{area.x() + (area.width() - width) // 2},{area.y() + (area.height() - height) // 2},-1,-1")
+                            except (OSError, subprocess.SubprocessError):
+                                pass
+                return {window[0] for window in windows}
+            except (OSError, subprocess.SubprocessError):
+                return previous
+
+        def done(snapshot):
+            self.center_baseline = snapshot
+            self.center_busy = False
+
+        self.center_busy = True
+        self.run_worker(scan, done, self.workspace_status)
 
     def workspace_action(self, task, on_result=lambda _: None):
         if available():

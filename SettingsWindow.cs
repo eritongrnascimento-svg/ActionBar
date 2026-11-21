@@ -62,8 +62,30 @@ internal sealed class SettingsWindow : Window
   Button(roots,"Remover caminho selecionado",()=>{if(custom.SelectedItem is string p){draft.IndexRoots.Remove(p);SearchPage();}});
   Slider(roots,"Limite de itens",draft.IndexLimit,10000,1000000,v=>draft.IndexLimit=(int)v);
   Button(roots,"Salvar e reconstruir índice",()=>{if(Save())_=index.Rebuild();});Button(roots,"Interromper indexação",index.Cancel);
+  BrowseSettings(panel);
   var programs=Card(panel,"Programas disponíveis",$"{apps.Count:N0} entradas encontradas em menu Iniciar, registro de instalação e aplicativos do Windows / Store. Executáveis nas unidades selecionadas também aparecem na pesquisa de arquivos.");
   programs.Children.Add(Label("Use app: nome para filtrar programas; arquivo: nome para filtrar arquivos; config: nome para pesquisar configurações."));
+ }
+ private void BrowseSettings(StackPanel panel)
+ {
+  var browser=Card(panel,"Aba Pastas","Escolha onde a aba abre e quais atalhos de unidades aparecem. Essas opções são independentes do índice.");
+  var folder=Text(browser,"Pasta inicial (em branco usa a pasta do usuário)",draft.DefaultBrowseFolder,v=>draft.DefaultBrowseFolder=v);
+  Button(browser,"Escolher pasta inicial…",()=>{
+   var picker=new OpenFolderDialog{Title="Pasta inicial da aba Pastas"};
+   if(picker.ShowDialog(this)==true)folder.Text=picker.FolderName;
+  });
+  var drives=new StackPanel();
+  Check(browser,"Mostrar todas as unidades disponíveis",draft.ShowAllBrowseDrives,v=>{draft.ShowAllBrowseDrives=v;drives.IsEnabled=!v;});
+  drives.IsEnabled=!draft.ShowAllBrowseDrives;
+  browser.Children.Add(drives);
+  foreach(var drive in DriveInfo.GetDrives())
+  {
+   var root=drive.Name;
+   Check(drives,root,draft.BrowseDriveRoots.Contains(root,StringComparer.OrdinalIgnoreCase),v=>{
+    draft.BrowseDriveRoots.RemoveAll(path=>path.Equals(root,StringComparison.OrdinalIgnoreCase));
+    if(v)draft.BrowseDriveRoots.Add(root);
+   });
+  }
  }
  private void WebPage()
  {
@@ -127,8 +149,38 @@ internal sealed class SettingsWindow : Window
  private void BehaviorPage()
  {
   var panel=Page("Comportamento da barra","Controle como a barra inicia, aparece e se integra à sessão do Windows.");var startup=Card(panel,"Inicialização e processo");Check(startup,"Guardar histórico de itens usados",draft.HistoryEnabled,v=>draft.HistoryEnabled=v);Check(startup,"Iniciar com o Windows (usuário atual)",draft.StartWithWindows,v=>draft.StartWithWindows=v);Select(startup,"Modo de inicialização",new[]{"Bandeja","Barra aberta"},draft.StartupMode,v=>draft.StartupMode=v);Select(startup,"Prioridade do processo",new[]{"Baixa","Abaixo do normal","Normal","Acima do normal"},draft.Priority,v=>draft.Priority=v);
-  var bar=Card(panel,"Ao usar a barra");Check(bar,"Manter a barra acima das janelas normais",draft.AlwaysOnTop,v=>draft.AlwaysOnTop=v);Check(bar,"Fechar ao perder o foco",draft.HideOnBlur,v=>draft.HideOnBlur=v);Check(bar,"Centralizar novas janelas (sem marcação fora de agrupamentos)",draft.CenterWindows,v=>draft.CenterWindows=v);
+  var bar=Card(panel,"Ao usar a barra");Check(bar,"Manter a barra acima das janelas normais",draft.AlwaysOnTop,v=>draft.AlwaysOnTop=v);Check(bar,"Fechar ao perder o foco",draft.HideOnBlur,v=>draft.HideOnBlur=v);CenteringSettings(panel);
   Button(bar,"Abrir aplicativos de inicialização do Windows",()=>Commands.Open("ms-settings:startupapps"));
+ }
+ private void CenteringSettings(StackPanel panel)
+ {
+  const string all="Todas as elegíveis", selective="Todas, exceto os aplicativos selecionados", off="Desativado";
+  var card=Card(panel,"Centralização de novas janelas");
+  var exclusions=new StackPanel{IsEnabled=draft.CenterWindows&&draft.CenterWindowsSelective};
+  Select(card,"Modo",new[]{all,selective,off},draft.CenterWindows?(draft.CenterWindowsSelective?selective:all):off,value=>{
+   draft.CenterWindows=value!=off;draft.CenterWindowsSelective=value==selective;exclusions.IsEnabled=value==selective;
+  });
+  card.Children.Add(exclusions);
+  var choices=apps.Select(app=>(Name:app.Name,Path:app.Executable.Length>0?app.Executable:app.Target))
+    .Where(app=>System.IO.Path.IsPathFullyQualified(app.Path)&&app.Path.EndsWith(".exe",StringComparison.OrdinalIgnoreCase))
+    .DistinctBy(app=>app.Path,StringComparer.OrdinalIgnoreCase).OrderBy(app=>app.Name).ToArray();
+  var picker=new ComboBox{ItemsSource=choices.Select(app=>new{app.Name,app.Path}).ToArray(),DisplayMemberPath="Name",SelectedValuePath="Path",MinWidth=220};
+  picker.IsTextSearchEnabled=true;
+  exclusions.Children.Add(picker);
+  var list=new ListBox{ItemsSource=draft.CenterWindowExclusions.ToArray(),MaxHeight=150};
+  void Add(string path){
+   if (!draft.CenterWindowExclusions.Contains(path,StringComparer.OrdinalIgnoreCase))draft.CenterWindowExclusions.Add(path);
+   list.ItemsSource=draft.CenterWindowExclusions.ToArray();
+  }
+  Button(exclusions,"Adicionar aplicativo selecionado",()=>{if(picker.SelectedValue is string path)Add(path);});
+  Button(exclusions,"Escolher executável…",()=>{
+   var file=new OpenFileDialog{Title="Aplicativo que não será centralizado",Filter="Programas|*.exe"};
+   if(file.ShowDialog(this)==true)Add(file.FileName);
+  });
+  exclusions.Children.Add(list);
+  Button(exclusions,"Remover exceção selecionada",()=>{
+   if(list.SelectedItem is string path){draft.CenterWindowExclusions.Remove(path);list.ItemsSource=draft.CenterWindowExclusions.ToArray();}
+  });
  }
  private void AboutPage()
  {

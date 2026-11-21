@@ -60,6 +60,8 @@ internal sealed class WindowManager : IDisposable
         var path=Native.Path(h);
         if(reservations.TryGetValue(path,out var expiry) && expiry>DateTime.UtcNow) return;
         if(!store.Data.CenterWindows || Native.IsIconic(h) || Native.IsZoomed(h)) return;
+        if (store.Data.CenterWindowsSelective && store.Data.CenterWindowExclusions.Any(excluded =>
+            string.Equals(excluded, path, StringComparison.OrdinalIgnoreCase))) return;
         Native.GetWindowRect(h,out var r); var area=Native.WorkArea(h);
         var x=area.Left+Math.Max(0,(area.Width-r.Width)/2); var y=area.Top+Math.Max(0,(area.Height-r.Height)/2);
         Native.SetWindowPos(h,IntPtr.Zero,x,y,0,0,0x15);

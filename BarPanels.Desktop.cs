@@ -19,6 +19,7 @@ internal sealed partial class BarPanels
     private readonly Image folderPreview = new() { Stretch = Stretch.Uniform };
     private readonly TextBlock folderStatus = Label();
     private readonly Button wallpaperApply = new() { Content = "Aplicar wallpaper", Padding = new Thickness(8, 4, 8, 4), IsEnabled = false };
+    private readonly WrapPanel browseDrives = new();
     private DirectoryInfo? currentFolder;
     private int folderRequest;
     private bool gallery;
@@ -33,10 +34,11 @@ internal sealed partial class BarPanels
         var go = Button("Ir", () => Run(folderStatus, () => Browse(folderAddress.Text)));
         OnEnter(folderAddress, () => Run(folderStatus, () => Browse(folderAddress.Text)));
         folderAddress.Width = 350;
-        Top(panel, Row(Button("Subir", () => Run(folderStatus, () => Browse(currentFolder?.Parent?.FullName ?? HomeFolder()))), folderAddress, go));
-        Top(panel, Row(Button("Início", () => Run(folderStatus, () => Browse(HomeFolder()))),
+        Top(panel, Row(Button("Subir", () => Run(folderStatus, () => Browse(currentFolder?.Parent?.FullName ?? InitialFolder()))), folderAddress, go));
+        Top(panel, Row(Button("Início", () => Run(folderStatus, () => Browse(InitialFolder()))),
             Button("Imagens", () => Run(folderStatus, () => Browse(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)))),
             Button("Galeria de wallpapers", () => Run(folderStatus, ShowWallpapers)), wallpaperApply));
+        Top(panel, browseDrives);
         Top(panel, folderStatus);
         var body = new Grid();
         body.ColumnDefinitions.Add(new ColumnDefinition());
@@ -58,10 +60,28 @@ internal sealed partial class BarPanels
 
     private static string HomeFolder() => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
+    private string InitialFolder()
+    {
+        var configured = settings().DefaultBrowseFolder;
+        return Directory.Exists(configured) ? configured : HomeFolder();
+    }
+
+    private void RefreshBrowseDrives()
+    {
+        browseDrives.Children.Clear();
+        var options = settings();
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            var root = drive.Name;
+            if (options.ShowAllBrowseDrives || options.BrowseDriveRoots.Contains(root, StringComparer.OrdinalIgnoreCase))
+                browseDrives.Children.Add(Button(root, () => Run(folderStatus, () => Browse(root))));
+        }
+    }
+
     private async Task Browse(string path)
     {
         var version = ++folderRequest;
-        if (string.IsNullOrWhiteSpace(path)) path = HomeFolder();
+        if (string.IsNullOrWhiteSpace(path)) path = InitialFolder();
         var directory = new DirectoryInfo(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')));
         folderStatus.Text = "Carregando pasta…";
         var items = await Task.Run(() => directory.EnumerateFileSystemInfos()

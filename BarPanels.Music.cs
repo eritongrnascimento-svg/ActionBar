@@ -48,12 +48,24 @@ internal sealed partial class BarPanels
         }
     }
 
+    private readonly SolidColorBrush musicCard = new();
+    private readonly SolidColorBrush musicText = new();
+    private readonly SolidColorBrush musicMuted = new();
+    private readonly SolidColorBrush musicStroke = new();
     private static Brush Paint(string color) => (Brush)new BrushConverter().ConvertFromString(color)!;
+
+    internal void ApplyMusicTheme(bool dark)
+    {
+        musicCard.Color = dark ? Color.FromArgb(200, 22, 27, 38) : Color.FromArgb(220, 255, 255, 255);
+        musicText.Color = dark ? Color.FromRgb(245, 247, 253) : Color.FromRgb(25, 31, 43);
+        musicMuted.Color = dark ? Color.FromRgb(185, 199, 220) : Color.FromRgb(81, 94, 115);
+        musicStroke.Color = dark ? Color.FromRgb(58, 75, 102) : Color.FromRgb(197, 210, 231);
+    }
 
     private void BuildMusic()
     {
         var page = Page("musica");
-        var muted = Paint("#AAB4CF");
+        var muted = musicMuted;
         var layout = new Grid { Margin = new Thickness(4) };
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
@@ -64,21 +76,21 @@ internal sealed partial class BarPanels
         var now = new DockPanel();
         var identity = new StackPanel { Margin = new Thickness(0, 9, 0, 0) };
         trackTitle.Text = "Escolha uma faixa";
-        trackTitle.Foreground = Brushes.White;
+        trackTitle.Foreground = musicText;
         trackDetails.Foreground = muted;
         identity.Children.Add(trackTitle);
         identity.Children.Add(trackDetails);
         DockPanel.SetDock(identity, Dock.Bottom);
         now.Children.Add(identity);
         var album = new Grid { ClipToBounds = true };
-        album.Children.Add(new TextBlock { Text = "♫", FontSize = 76, Foreground = Paint("#E1D9FF"),
+        album.Children.Add(new TextBlock { Text = "♫", FontSize = 62, Foreground = Paint("#D7F4FF"),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         album.Children.Add(coverImage);
         var cover = new Border { CornerRadius = new CornerRadius(13), ClipToBounds = true,
-            Background = new LinearGradientBrush(Color.FromRgb(106, 76, 167), Color.FromRgb(29, 41, 79), 38), Child = album };
+            Background = new LinearGradientBrush(Color.FromRgb(83, 92, 191), Color.FromRgb(14, 54, 82), 38), Child = album };
         now.Children.Add(cover);
         var main = new Border { Padding = new Thickness(13), Margin = new Thickness(0, 0, 10, 9), CornerRadius = new CornerRadius(16),
-            Background = Paint("#1B2132"), Child = now };
+            Background = musicCard, BorderBrush = musicStroke, BorderThickness = new Thickness(1), Child = now };
         layout.Children.Add(main);
 
         var playlist = new DockPanel();
@@ -91,7 +103,7 @@ internal sealed partial class BarPanels
         Top(playlist, trackCount);
         queue.ItemsSource = tracks;
         queue.DisplayMemberPath = nameof(Track.Title);
-        queue.Foreground = Brushes.White;
+        queue.Foreground = musicText;
         queue.MouseDoubleClick += (_, args) =>
         {
             if (args.OriginalSource is DependencyObject hit && ItemsControl.ContainerFromElement(queue, hit) is ListBoxItem { Content: Track track })
@@ -110,7 +122,7 @@ internal sealed partial class BarPanels
         queue.ContextMenu = queueMenu;
         playlist.Children.Add(queue);
         var queueCard = new Border { Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 9), CornerRadius = new CornerRadius(16),
-            Background = Paint("#191F2C"), Child = playlist };
+            Background = musicCard, BorderBrush = musicStroke, BorderThickness = new Thickness(1), Child = playlist };
         Grid.SetColumn(queueCard, 1);
         layout.Children.Add(queueCard);
 
@@ -127,7 +139,7 @@ internal sealed partial class BarPanels
 
         playPause = Button("▶  Tocar", ToggleMusic);
         playPause.FontWeight = FontWeights.SemiBold;
-        playPause.Background = Paint("#C4AFF9");
+        playPause.Background = Paint("#83DDF8");
         playPause.Foreground = Paint("#211335");
         var previous = Button("⏮", PreviousTrack);
         previous.ToolTip = "Faixa anterior";
@@ -149,7 +161,7 @@ internal sealed partial class BarPanels
         musicStatus.Foreground = muted;
         controls.Children.Add(musicStatus);
         var footer = new Border { Padding = new Thickness(11, 8, 11, 3), CornerRadius = new CornerRadius(16),
-            Background = Paint("#191F2C"), Child = controls };
+            Background = musicCard, BorderBrush = musicStroke, BorderThickness = new Thickness(1), Child = controls };
         Grid.SetRow(footer, 1);
         Grid.SetColumnSpan(footer, 2);
         layout.Children.Add(footer);

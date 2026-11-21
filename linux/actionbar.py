@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import subprocess
 import sqlite3
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 from PySide6.QtCore import QDateTime, QProcess, QSettings, QTimer, QUrl, Qt
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette
@@ -29,7 +29,7 @@ from music import MusicPanel
 from notifications import NotificationMonitor
 from ocr_tools import RegionPicker, translate
 from terminal import Terminal
-from workspaces import WorkspacesPanel
+from workspaces import WorkspacesPanel, available
 
 DATA = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "actionbar"
 REMINDERS = DATA / "reminders.json"
@@ -73,6 +73,8 @@ class ActionBar(QTabWidget, DesktopPanel, MusicPanel, WorkspacesPanel):
         self.build_desktop()
         self.build_workspaces(DATA)
         self.build_settings()
+        self.currentChanged.connect(lambda _: (self.refresh_mounts(), self.open_folder(self.initial_folder()))
+                                    if self.currentWidget() is self.folder_page and self.folder_files.count() == 0 else None)
         self.poll = QTimer(self)
         self.poll.timeout.connect(self.check_alarms)
         self.poll.start(1000)
@@ -297,6 +299,50 @@ class ActionBar(QTabWidget, DesktopPanel, MusicPanel, WorkspacesPanel):
         layout.addWidget(indexed)
         layout.addWidget(rebuild)
         layout.addWidget(self.index_status)
+        home = self.button("Escolher pasta inicial da aba Pastas…", lambda: choose_home())
+        home.setToolTip(str(self.initial_folder()))
+        def choose_home():
+            path = QFileDialog.getExistingDirectory(self, "Pasta inicial", str(self.initial_folder()))
+            if path:
+                self.preferences.setValue("browse_home", path)
+                home.setToolTip(path)
+                self.folder_files.clear()
+        layout.addWidget(home)
+        all_mounts = QCheckBox("Mostrar todos os volumes")
+        all_mounts.setChecked(self.preferences.value("browse_all_mounts", True, bool))
+        mounts = QListWidget()
+        mounts.setMaximumHeight(80)
+        selected_mounts = self.preferences.value("browse_mounts", [], list)
+        for path in sorted(set(self.mounted_paths()) | set(selected_mounts)):
+            item = QListWidgetItem(path)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if path in selected_mounts else Qt.CheckState.Unchecked)
+            mounts.addItem(item)
+        def mount_toggle(value):
+            self.preferences.setValue("browse_all_mounts", value)
+            mounts.setEnabled(not value)
+            self.refresh_mounts()
+        def mount_choice(_):
+            self.preferences.setValue("browse_mounts", [mounts.item(i).text() for i in range(mounts.count())
+                                                       if mounts.item(i).checkState() == Qt.CheckState.Checked])
+            self.refresh_mounts()
+        all_mounts.toggled.connect(mount_toggle)
+        mounts.setEnabled(not all_mounts.isChecked())
+        mounts.itemChanged.connect(mount_choice)
+        layout.addWidget(all_mounts)
+        layout.addWidget(mounts)
+        center = QComboBox()
+        center.addItems(["Centralização desativada", "Centralizar todas · X11", "Centralizar com exceções · X11"])
+        center.setCurrentIndex(self.preferences.value("center_windows", 0, int))
+        center.setEnabled(available())
+        center.currentIndexChanged.connect(lambda value: self.preferences.setValue("center_windows", value))
+        layout.addWidget(center)
+        excluded = QLineEdit(", ".join(self.preferences.value("center_exclusions", [], list)),
+                             placeholderText="Classes dos aplicativos separadas por vírgula")
+        excluded.setEnabled(available())
+        excluded.editingFinished.connect(lambda: self.preferences.setValue("center_exclusions",
+            [value.strip().casefold() for value in excluded.text().split(",") if value.strip()]))
+        layout.addWidget(excluded)
         layout.addWidget(QLabel("Atalho global · associe o comando actionbar a um atalho do ambiente gráfico."))
         layout.addStretch()
 
@@ -441,7 +487,7 @@ class ActionBar(QTabWidget, DesktopPanel, MusicPanel, WorkspacesPanel):
         self.portal = ScreenPortal(self)
         self.portal.finished.connect(self.portal_result)
         self.capture = self.button("Capturar…", self.choose_capture)
-        self.translate_auto = QCheckBox("Traduzir após OCR")
+        self.translate_auto = QCheckBox("Traduzir após OCR (Azure)")
         self.translate_language = QComboBox()
         for label, code in [("Português", "pt"), ("Inglês", "en"), ("Espanhol", "es"), ("Francês", "fr"), ("Alemão", "de")]:
             self.translate_language.addItem(label, code)
@@ -452,7 +498,7 @@ class ActionBar(QTabWidget, DesktopPanel, MusicPanel, WorkspacesPanel):
         self.ocr_status.setWordWrap(True)
         self.row(layout, self.capture, self.button("Ler imagem", self.read_image), self.button("Copiar texto",
                  lambda: QApplication.clipboard().setText(self.ocr_output.toPlainText())))
-        self.row(layout, self.translate_language, self.button("Traduzir online", self.translate_ocr), self.translate_auto)
+        self.row(layout, self.translate_language, self.button("Traduzir", self.translate_ocr), self.button("Google Tradutor", self.open_web_translation), self.translate_auto)
         layout.addWidget(self.ocr_status)
         self.row(layout, self.ocr_output, self.ocr_translation)
 
@@ -469,9 +515,25 @@ class ActionBar(QTabWidget, DesktopPanel, MusicPanel, WorkspacesPanel):
         if dialog.clickedButton() in (whole, region):
             self.start_capture(dialog.clickedButton() == region)
 
+    def open_web_translation(self):
+        source = self.ocr_output.toPlainText().strip()
+        if not source:
+            self.ocr_status.setText("Capture texto antes de traduzir.")
+            return
+        query = {"sl": "auto", "tl": self.translate_language.currentData(), "op": "translate"}
+        if len(quote(source)) > 12000:
+            QApplication.clipboard().setText(source)
+            self.web_status.setText("Texto copiado. Cole no tradutor e divida em partes se necessário.")
+        else:
+            query["text"] = source
+        self.open_webmail("https://translate.google.com/?" + urlencode(query))
+
     def translate_ocr(self):
         source = self.ocr_output.toPlainText().strip()
         if source:
+            if not os.environ.get("ACTIONBAR_TRANSLATOR_KEY"):
+                self.open_web_translation()
+                return
             self.ocr_status.setText("Traduzindo…")
             language = self.translate_language.currentData()
             def finished(result):
@@ -544,7 +606,7 @@ class ActionBar(QTabWidget, DesktopPanel, MusicPanel, WorkspacesPanel):
         def complete(text):
             self.ocr_output.setPlainText(text)
             self.ocr_status.setText("Reconhecimento concluído." if text else "Nenhum texto encontrado.")
-            if text and self.translate_auto.isChecked():
+            if text and self.translate_auto.isChecked() and os.environ.get("ACTIONBAR_TRANSLATOR_KEY"):
                 self.translate_ocr()
         self.run_worker(recognize, complete, self.ocr_status)
 

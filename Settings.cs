@@ -12,7 +12,12 @@ public sealed class Appearance
 public sealed class ShortcutBinding { public string Name {get;set;}=""; public string Chord {get;set;}=""; public string Target {get;set;}=""; }
 public sealed class Settings
 {
- public bool CenterWindows {get;set;}=true; public List<Workspace> Workspaces {get;set;}=new();
+ public bool CenterWindows {get;set;}=true;
+ public bool CenterWindowsSelective {get;set;}
+ public List<string> CenterWindowExclusions {get;set;}=new();
+ public string DefaultBrowseFolder {get;set;}="";
+ public List<string> BrowseDriveRoots {get;set;}=new();
+ public bool ShowAllBrowseDrives {get;set;}=true; public List<Workspace> Workspaces {get;set;}=new();
  public List<string> IndexRoots {get;set;}=new(){Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"Downloads")};
  public bool IndexFiles {get;set;}=true; public bool AutoIndex {get;set;}=true; public int IndexLimit {get;set;}=500000;
  public string Browser {get;set;}=""; public string SearchEngine {get;set;}="Google";

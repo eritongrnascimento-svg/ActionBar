@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Web.WebView2.Wpf;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage.Streams;
@@ -19,11 +20,13 @@ internal sealed partial class BarPanels
 {
     private readonly TextBox translation = Output();
     private readonly ComboBox targetLanguage = new() { MinWidth = 115, SelectedIndex = 0, DisplayMemberPath = "Label", SelectedValuePath = "Code" };
-    private readonly CheckBox autoTranslate = new() { Content = "Traduzir após o OCR (online)", VerticalAlignment = VerticalAlignment.Center };
+    private readonly CheckBox autoTranslate = new() { Content = "Traduzir após OCR (Azure)", VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock ocrStatus = Label("Selecione uma região ou leia o monitor do cursor.");
     private readonly Button capture = new() { Content = "Capturar…", Margin = new Thickness(4) };
-    private readonly Button translateButton = new() { Content = "Traduzir online", Margin = new Thickness(4) };
+    private readonly Button translateButton = new() { Content = "Traduzir", Margin = new Thickness(4) };
     private bool captureChoiceScheduled;
+    private readonly Grid translationHost = new();
+    private WebView2CompositionControl? translatorView;
     private sealed record LanguageChoice(string Label, string Code);
 
     private void BuildOcr()
@@ -43,6 +46,8 @@ internal sealed partial class BarPanels
         translateButton.Click += (_, _) => Run(ocrStatus, TranslateOcr);
         Top(panel, Row(capture, Button("Copiar original", () => CopyText(ocrText))));
         Top(panel, Row(targetLanguage, translateButton, autoTranslate, Button("Copiar tradução", () => CopyText(translation))));
+        Top(panel, Row(Button("Abrir Google Tradutor", () => Run(ocrStatus, OpenWebTranslation)),
+            Button("Voltar ao resultado", CloseWebTranslation)));
         Top(panel, ocrStatus);
         var columns = new Grid();
         columns.ColumnDefinitions.Add(new ColumnDefinition());
@@ -52,7 +57,8 @@ internal sealed partial class BarPanels
         Top(original, Label("Texto reconhecido"));
         Top(translated, Label("Tradução"));
         original.Children.Add(ocrText);
-        translated.Children.Add(translation);
+        translationHost.Children.Add(translation);
+        translated.Children.Add(translationHost);
         columns.Children.Add(original);
         Grid.SetColumn(translated, 1);
         columns.Children.Add(translated);
@@ -129,9 +135,10 @@ internal sealed partial class BarPanels
             var recognized = await engine.RecognizeAsync(bitmap);
             if (disposed || invocation != panelInvocation) return;
             ocrText.Text = string.Join(Environment.NewLine, recognized.Lines.Select(line => line.Text));
+            CloseWebTranslation();
             translation.Clear();
             ocrStatus.Text = string.IsNullOrWhiteSpace(ocrText.Text) ? "Nenhum texto reconhecido nesta área." : "";
-            if (autoTranslate.IsChecked == true && ocrText.Text.Length > 0)
+            if (autoTranslate.IsChecked == true && ocrText.Text.Length > 0 && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ACTIONBAR_TRANSLATOR_KEY")))
             {
                 window.Show();
                 await TranslateOcr();
@@ -147,12 +154,67 @@ internal sealed partial class BarPanels
         }
     }
 
+    private void CloseWebTranslation()
+    {
+        if (translatorView != null)
+        {
+            translatorView.Visibility = Visibility.Collapsed;
+            translatorView.CoreWebView2?.Navigate("about:blank");
+        }
+        translation.Visibility = Visibility.Visible;
+    }
+
+    private async Task OpenWebTranslation()
+    {
+        var text = ocrText.Text.Trim();
+        if (text.Length == 0) { ocrStatus.Text = "Capture texto antes de traduzir."; return; }
+        var invocation = panelInvocation;
+        if (translatorView == null)
+        {
+            translatorView = new WebView2CompositionControl();
+            translatorView.CoreWebView2InitializationCompleted += (_, args) =>
+            {
+                if (!args.IsSuccess) return;
+                var core = translatorView.CoreWebView2;
+                core.Settings.IsWebMessageEnabled = false;
+                core.Settings.AreHostObjectsAllowed = false;
+                core.NewWindowRequested += (_, popup) => popup.Handled = true;
+                core.NavigationStarting += (_, nav) =>
+                {
+                    if (nav.Uri == "about:blank") return;
+                    nav.Cancel = !Uri.TryCreate(nav.Uri, UriKind.Absolute, out var uri)
+                        || uri.Scheme != "https" || uri.IdnHost != "translate.google.com";
+                };
+            };
+            translationHost.Children.Add(translatorView);
+        }
+        var view = translatorView;
+        await view.EnsureCoreWebView2Async();
+        if (disposed || invocation != panelInvocation) return;
+        var language = (string?)targetLanguage.SelectedValue ?? "pt";
+        var escaped = Uri.EscapeDataString(text);
+        var url = "https://translate.google.com/?sl=auto&tl=" + language + "&op=translate";
+        if (escaped.Length > 12000)
+        {
+            Clipboard.SetText(text);
+            ocrStatus.Text = "Texto copiado. Cole no tradutor e divida em partes se necessário.";
+        }
+        else
+        {
+            url += "&text=" + escaped;
+            ocrStatus.Text = "Google Tradutor · o texto é enviado ao serviço online.";
+        }
+        translation.Visibility = Visibility.Collapsed;
+        view.Visibility = Visibility.Visible;
+        view.Source = new Uri(url);
+    }
+
     private async Task TranslateOcr()
     {
         if (string.IsNullOrWhiteSpace(ocrText.Text)) { ocrStatus.Text = "Capture texto antes de traduzir."; return; }
         var key = Environment.GetEnvironmentVariable("ACTIONBAR_TRANSLATOR_KEY");
-        if (string.IsNullOrWhiteSpace(key))
-            throw new InvalidOperationException("Configure ACTIONBAR_TRANSLATOR_KEY e, para recursos regionais, ACTIONBAR_TRANSLATOR_REGION.");
+        if (string.IsNullOrWhiteSpace(key)) { await OpenWebTranslation(); return; }
+        CloseWebTranslation();
         if (ocrText.Text.Length > 50000) throw new InvalidOperationException("A tradução aceita até 50 mil caracteres por captura.");
         var language = (string?)targetLanguage.SelectedValue ?? "pt";
         using var message = new HttpRequestMessage(HttpMethod.Post, "https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=" + language)

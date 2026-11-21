@@ -6,11 +6,11 @@ A edição Linux usa Python e Qt e inclui busca de aplicativos e arquivos, calcu
 
 Use o pacote **.deb** no Ubuntu ou derivados Debian. O APT resolve as dependências nativas:
 
-    sudo apt install ./actionbar_0.6.2_amd64.deb
+    sudo apt install ./actionbar_0.6.4_amd64.deb
 
 Use o **.run** para instalar na conta atual, inclusive em Arch Linux, Fedora e openSUSE. O instalador coloca o programa no menu de aplicativos e cria ~/.local/bin/actionbar:
 
-    sh ActionBar-0.6.2-Linux-x64.run
+    sh ActionBar-0.6.4-Linux-x64.run
 
 Os dois pacotes incluem Qt/PySide6 6.10.2, dbus-next e xterm.js. Requerem Python 3.10–3.14, glibc 2.34 ou mais recente e as bibliotecas nativas normalmente presentes em ambientes gráficos. O pacote .run também requer Tesseract para OCR e wmctrl para gerenciar outras janelas no X11.
 
@@ -29,7 +29,7 @@ Os dois pacotes incluem Qt/PySide6 6.10.2, dbus-next e xterm.js. Requerem Python
 - **Notificações** podem acompanhar mensagens novas se o barramento D-Bus permitir monitoramento. O painel não recupera notificações anteriores nem notificações entregues por interfaces privadas do ambiente.
 - **Atalho global.** Cadastre actionbar como atalho personalizado do desktop para mostrar ou ocultar a instância existente. O aplicativo mantém a consulta limpa quando é reaberto.
 - **Busca por termo no YouTube** requer ACTIONBAR_YOUTUBE_API_KEY. Links de vídeos, lives e Shorts são aceitos. O próprio provedor decide se o conteúdo pode ser incorporado.
-- **Tradução online** requer ACTIONBAR_TRANSLATOR_KEY e, para recursos regionais, ACTIONBAR_TRANSLATOR_REGION. O aplicativo envia o texto reconhecido somente quando a tradução é solicitada ou habilitada.
+- **Tradução automática por Azure** requer ACTIONBAR_TRANSLATOR_KEY e, para recursos regionais, ACTIONBAR_TRANSLATOR_REGION. O Google Tradutor pode abrir no painel Internet sem chave. Use Configurações para escolher a pasta inicial, os volumes visíveis e a centralização em X11. Nas exceções de centralização, informe as classes mostradas na aba Janelas.
 - **Lembretes** ficam no diretório XDG de dados do usuário. Para disparar pontualmente, deixe o ActionBar em execução.
 
 O porte ainda não tem paridade completa com o Windows. Faltam a reabertura automática de aplicativos dos grupos, toda a personalização WPF, os widgets específicos do Windows, alguns atalhos e ações de sistema, conversões completas da calculadora e a leitura portátil da central de notificações. O funcionamento varia conforme desktop, compositor e pacotes instalados.
@@ -42,7 +42,7 @@ A partir da raiz do repositório:
     .venv/bin/python -m pip install -r linux/requirements.txt
     .venv/bin/python linux/actionbar.py
 
-Os scripts de empacotamento estão em packaging/. Para reproduzir a edição 0.6.2, obtenha os cinco wheels Linux x86-64 e universais de linux/requirements.txt, em seguida execute:
+Os scripts de empacotamento estão em packaging/. Para reproduzir a edição 0.6.4, obtenha os cinco wheels Linux x86-64 e universais de linux/requirements.txt, em seguida execute:
 
     python3 packaging/build-linux.py --wheels wheelhouse --out dist
 

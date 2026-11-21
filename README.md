@@ -8,9 +8,9 @@ Barra de pesquisa e ações rápidas para Windows e Linux. Encontre aplicativos 
 
 | Sistema | Pacote |
 | --- | --- |
-| Windows 10/11 x64 | **ActionBar-0.6.2-Windows-x64-Setup.exe**. Instalador por usuário, com opção de importar dados da edição portátil. |
-| Ubuntu e derivados x86-64 | **actionbar_0.6.2_amd64.deb**. Instale com sudo apt install ./actionbar_0.6.2_amd64.deb. |
-| Outras distribuições x86-64 | **ActionBar-0.6.2-Linux-x64.run**. Execute com sh ActionBar-0.6.2-Linux-x64.run. |
+| Windows 10/11 x64 | **ActionBar-0.6.4-Windows-x64-Setup.exe**. Instalador por usuário, com opção de importar dados da edição portátil. |
+| Ubuntu e derivados x86-64 | **actionbar_0.6.4_amd64.deb**. Instale com sudo apt install ./actionbar_0.6.4_amd64.deb. |
+| Outras distribuições x86-64 | **ActionBar-0.6.4-Linux-x64.run**. Execute com sh ActionBar-0.6.4-Linux-x64.run. |
 
 Consulte [Releases](https://github.com/eritongrnascimento-svg/ActionBar/releases) para a disponibilidade dos arquivos e leia o [guia Linux](linux/README.md) para os requisitos e as diferenças entre desktops. Os scripts para compilar os instaladores estão em [packaging](packaging).
 
@@ -21,10 +21,20 @@ Consulte [Releases](https://github.com/eritongrnascimento-svg/ActionBar/releases
 | ![Barra de pesquisa do ActionBar](docs/busca-windows.jpg) | ![Lista de itens recentes](docs/recentes-windows.jpg) |
 | **Armazenamento** | **Controles de volume** |
 | ![Espaço disponível por unidade](docs/armazenamento-windows.jpg) | ![Controles de volume e microfone](docs/volume-windows.jpg) |
+| **Pastas** | **Player de música** |
+| ![Navegação pelas pastas](docs/pastas-windows.jpg) | ![Fila e controles de música](docs/musica-windows.jpg) |
+| **Terminal interativo** | **Pesquisa no YouTube** |
+| ![PowerShell na própria barra](docs/terminal-windows.jpg) | ![Resultados do YouTube na barra](docs/youtube-windows.jpg) |
 
-**Navegação dentro da barra**
+## ActionBar 0.6.4
 
-![Aba Internet aberta junto à barra do ActionBar](docs/internet-windows.jpg)
+- **OCR.** O botão Traduzir abre o Google Tradutor dentro da barra quando nenhuma chave do Azure está configurada. A tradução automática após a captura continua disponível pelo Azure. O texto enviado ao tradutor web é processado pelo serviço online.
+- **Pastas.** Em Configurações → Pesquisa e arquivos, escolha a pasta inicial e quais atalhos de unidades são exibidos.
+- **Centralização.** Em Configurações → Comportamento, centralize todas as novas janelas elegíveis, desligue a função ou adicione aplicativos à lista de exceções. O porte Linux faz a centralização em X11 quando wmctrl está disponível.
+
+## ActionBar 0.6.3 para Windows
+
+As abas de YouTube, Internet, Música, Terminal e as outras ferramentas abrem dentro da janela principal. YouTube usa a página de resultados do próprio YouTube no Microsoft Edge WebView2. Cole um link ou pesquise por termo, e abra um vídeo para poder copiar o link. A aba Internet também usa WebView2. O terminal incorpora uma sessão PowerShell com ConPTY e xterm.js.
 
 ## Guia da versão Windows 0.6.2
 

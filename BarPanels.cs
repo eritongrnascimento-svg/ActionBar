@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +11,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using Windows.UI.Notifications;
 using Windows.UI.Notifications.Management;
@@ -28,48 +26,44 @@ internal sealed partial class BarPanels : IDisposable
         ("Terminal","terminal"), ("Notificações","notificacoes"), ("OCR","ocr"), ("Lembretes","lembretes"), ("Pastas","pastas"), ("Atualizações","atualizacoes")
     };
 
-    private readonly Window window = new() { Title = "ActionBar", Width = 650, Height = 510 };
-    private readonly TabControl tabs = new();
+    private readonly Window window;
+    private readonly Func<Settings> settings;
+    internal UIElement View => tabs;
+    internal bool IsOpen => tabs.Visibility == Visibility.Visible;
+    internal bool TerminalHasFocus => terminalView?.IsKeyboardFocusWithin == true;
+    internal string? CurrentMode => (tabs.SelectedItem as TabItem)?.Tag as string;
+    private readonly TabControl tabs = new() { Visibility = Visibility.Collapsed };
     private readonly Dictionary<string, TabItem> pages = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly MediaPlayer music = new();
     private readonly string alarmPath;
     private readonly TextBox youtube = Field(), address = Field();
     private readonly TextBox ocrText = Output(), inbox = Output();
-    private readonly ListBox videoResults = new(), alarms = new();
+    private readonly ListBox alarms = new();
     private readonly TextBlock videoStatus = Label(), webStatus = Label(), musicStatus = Label(), alarmStatus = Label();
     private readonly CancellationTokenSource lifetime = new();
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
     private readonly List<Reminder> reminders;
-    private WebView2? video, internet;
+    private WebView2CompositionControl? video, internet;
     private string? videoLink;
-    private CancellationTokenSource? lookup;
     private bool disposed;
     private int panelInvocation;
 
 
-    private sealed record Video(string Id, string Title)
-    {
-        public override string ToString() => Title;
-    }
     private sealed record Reminder(Guid Id, DateTimeOffset Due, string Text, bool Sticky)
     {
         public override string ToString() => $"{Due.LocalDateTime:g} · {Text}";
     }
 
-    internal BarPanels(string folder)
+    internal BarPanels(Window owner, string folder, Func<Settings> settings)
     {
+        window = owner;
+        this.settings = settings;
         alarmPath = Path.Combine(folder, "lembretes.json");
         reminders = LoadReminders();
-        window.Content = tabs;
-        window.Icon = Brand.WindowIcon;
-        window.PreviewKeyDown += (_, args) =>
-        {
-            if (args.Key != System.Windows.Input.Key.Escape || terminalView?.IsKeyboardFocusWithin == true) return;
-            args.Handled = true;
-            Hide();
-        };
-        window.Closing += (_, e) => { if (!disposed) { e.Cancel = true; Hide(); } };
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(ContentPresenter.ContentSourceProperty, "SelectedContent");
+        tabs.Template = new ControlTemplate(typeof(TabControl)) { VisualTree = presenter };
         BuildVideo();
         BuildInternet();
         BuildMusic();
@@ -85,48 +79,31 @@ internal sealed partial class BarPanels : IDisposable
 
     internal void Hide()
     {
+        if (!IsOpen) return;
         panelInvocation++;
-        lookup?.Cancel();
-        window.Hide();
-        if (video?.CoreWebView2 != null && videoLink != null) video.CoreWebView2.Navigate("about:blank");
+        tabs.Visibility = Visibility.Collapsed;
+        video?.CoreWebView2?.Navigate("about:blank");
         videoLink = null;
-        if (video != null) video.Visibility = Visibility.Collapsed;
     }
 
-    internal void Show(string mode, string query, Window anchor)
+    internal void Show(string mode, string query)
     {
+        var previous = CurrentMode;
         panelInvocation++;
+        tabs.Visibility = Visibility.Visible;
         tabs.SelectedItem = pages[mode];
-        if (!window.IsVisible)
-        {
-            var dpi = VisualTreeHelper.GetDpi(anchor);
-            var work = Forms.Screen.FromPoint(Forms.Cursor.Position).WorkingArea;
-            window.Width = Math.Min(650, work.Width / dpi.DpiScaleX);
-            window.Height = Math.Min(510, work.Height / dpi.DpiScaleY);
-            window.Left = Math.Clamp(anchor.Left, work.Left / dpi.DpiScaleX, work.Right / dpi.DpiScaleX - window.Width);
-            window.Top = Math.Clamp(anchor.Top + 115, work.Top / dpi.DpiScaleY, work.Bottom / dpi.DpiScaleY - window.Height);
-            window.Topmost = anchor.Topmost;
-            window.Show();
-        }
-        window.Activate();
+        if (previous == "youtube" && mode != "youtube") video?.CoreWebView2?.Navigate("about:blank");
         switch (mode)
         {
             case "youtube":
                 youtube.Text = query;
                 youtube.Focus();
-                if (query.Length > 0) Run(videoStatus, SearchVideo);
-                else
-                {
-                    videoResults.ItemsSource = null;
-                    videoResults.Visibility = Visibility.Collapsed;
-                    videoStatus.Text = "";
-                }
+                Run(videoStatus, SearchVideo);
                 break;
             case "internet":
-                if (query.Length == 0 && internet?.CoreWebView2 != null) internet.CoreWebView2.Navigate("about:blank");
                 address.Text = query;
                 address.Focus();
-                if (query.Length > 0) Run(webStatus, Navigate);
+                Run(webStatus, Navigate);
                 break;
             case "terminal":
                 pendingCommand = query.Length == 0 ? null : query;
@@ -136,6 +113,8 @@ internal sealed partial class BarPanels : IDisposable
                 ScheduleCaptureChoice();
                 break;
             case "pastas":
+                RefreshBrowseDrives();
+                RefreshBrowseDrives();
                 if (query == "\0wallpapers") Run(folderStatus, ShowWallpapers);
                 else Run(folderStatus, () => Browse(query));
                 break;
@@ -156,7 +135,7 @@ internal sealed partial class BarPanels : IDisposable
     private DockPanel Page(string key)
     {
         var panel = new DockPanel { Margin = new Thickness(10) };
-        var page = new TabItem { Header = Modes.First(m => m.Key == key).Label, Content = panel };
+        var page = new TabItem { Header = Modes.First(m => m.Key == key).Label, Tag = key, Content = panel };
         pages.Add(key, page);
         tabs.Items.Add(page);
         return panel;
@@ -193,117 +172,44 @@ internal sealed partial class BarPanels : IDisposable
         var panel = Page("youtube");
         Action search = () => Run(videoStatus, SearchVideo);
         OnEnter(youtube, search);
-        System.Windows.Automation.AutomationProperties.SetName(youtube, "Termo ou link do YouTube");
-        youtube.Width = 355;
-        Top(panel, Label("Termo de pesquisa ou link do YouTube"));
-        Top(panel, Row(youtube, Button("Abrir ou pesquisar", search), Button("Copiar link", () =>
-        {
-            if (videoLink == null) return;
-            Run(videoStatus, () => { Clipboard.SetText(videoLink); videoStatus.Text = "Link copiado."; return Task.CompletedTask; });
-        })));
+        youtube.Width = 300;
+        System.Windows.Automation.AutomationProperties.SetName(youtube, "Pesquisar no YouTube ou colar link");
+        Top(panel, Row(youtube, Button("Pesquisar ou abrir", search),
+            Button("Voltar", () => { if (video?.CanGoBack == true) video.GoBack(); }),
+            Button("Copiar link", () => Run(videoStatus, () =>
+            {
+                if (videoLink == null) videoStatus.Text = "Abra um vídeo para copiar o link.";
+                else { Clipboard.SetText(videoLink); videoStatus.Text = "Link copiado."; }
+                return Task.CompletedTask;
+            }))));
         Top(panel, videoStatus);
-        videoResults.MaxHeight = 100;
-        videoResults.Visibility = Visibility.Collapsed;
-        videoResults.SelectionChanged += (_, _) =>
-        {
-            if (videoResults.SelectedItem is Video item) Run(videoStatus, () => PlayVideo(item.Id));
-        };
-        Top(panel, videoResults);
     }
 
     private async Task SearchVideo()
     {
-        lookup?.Cancel();
-        lookup?.Dispose();
-        lookup = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        var token = lookup.Token;
         var query = youtube.Text.Trim();
-        if (query.Length == 0) return;
-        videoResults.ItemsSource = null;
-        videoResults.Visibility = Visibility.Collapsed;
-        if (VideoAddress.TryParse(query, out var id))
-        {
-            await PlayVideo(id);
-            return;
-        }
-        if (query.Contains("://", StringComparison.Ordinal))
-            throw new ArgumentException("Cole o endereço de um vídeo, Short ou transmissão do YouTube.");
-        var apiKey = Environment.GetEnvironmentVariable("ACTIONBAR_YOUTUBE_API_KEY");
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            videoStatus.Text = "Configure ACTIONBAR_YOUTUBE_API_KEY para pesquisar ou cole o link de um vídeo.";
-            return;
-        }
-        videoStatus.Text = "Pesquisando…";
-        var url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=10&q=" +
-            Uri.EscapeDataString(query) + "&key=" + Uri.EscapeDataString(apiKey);
-        using var response = await Http.GetAsync(url, token);
-        if (!response.IsSuccessStatusCode) { videoStatus.Text = $"YouTube respondeu com HTTP {(int)response.StatusCode}. Confira a chave e a cota."; return; }
-        using var data = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
-        token.ThrowIfCancellationRequested();
-        videoResults.ItemsSource = data.RootElement.GetProperty("items").EnumerateArray().Select(item =>
-            new Video(item.GetProperty("id").GetProperty("videoId").GetString()!,
-            System.Net.WebUtility.HtmlDecode(item.GetProperty("snippet").GetProperty("title").GetString()) ?? "(Sem título)")).ToArray();
-        videoResults.Visibility = videoResults.Items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        videoStatus.Text = videoResults.Items.Count == 0 ? "Nenhum vídeo encontrado." : "Selecione um vídeo.";
-    }
-
-    private async Task PlayVideo(string id)
-    {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"\A[A-Za-z0-9_-]{11}\z"))
-            throw new ArgumentException("Link de vídeo inválido.");
+        var url = VideoAddress.TryParse(query, out var id) ? "https://www.youtube.com/watch?v=" + id
+            : query.Length == 0 ? "https://www.youtube.com/"
+            : "https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query);
         var invocation = panelInvocation;
         var browser = video ??= AddWebView("youtube");
         await browser.EnsureCoreWebView2Async();
-        if (disposed || invocation != panelInvocation) return;
-        browser.Visibility = Visibility.Visible;
-        videoLink = "https://www.youtube.com/watch?v=" + id;
-        videoStatus.Text = "Carregando vídeo…";
-        browser.CoreWebView2.Navigate(VideoOrigin + PlayerPath + id);
+        if (!disposed && invocation == panelInvocation) browser.Source = new Uri(url);
     }
 
-    // Use the application's manifest identity as the HTTPS origin for desktop embeds.
-    private const string VideoOrigin = "https://actionbar";
-    private const string PlayerPath = "/player/";
-    private static readonly System.Text.RegularExpressions.Regex EmbeddedId =
-        new(@"\A[A-Za-z0-9_-]{11}\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-    private static void ConfigureEmbeddedVideo(CoreWebView2 browser)
+    private WebView2CompositionControl AddWebView(string page)
     {
-        browser.AddWebResourceRequestedFilter(VideoOrigin + PlayerPath + "*", CoreWebView2WebResourceContext.Document);
-        browser.AddWebResourceRequestedFilter("https://www.youtube.com/embed/*", CoreWebView2WebResourceContext.Document);
-        browser.WebResourceRequested += (_, args) =>
-        {
-            if (args.Request.Uri.StartsWith("https://www.youtube.com/embed/", StringComparison.Ordinal))
-            {
-                args.Request.Headers.SetHeader("Referer", VideoOrigin + "/");
-                return;
-            }
-            var id = args.Request.Uri[(VideoOrigin.Length + PlayerPath.Length)..];
-            if (!EmbeddedId.IsMatch(id))
-            {
-                args.Response = browser.Environment.CreateWebResourceResponse(null, 404, "Not Found", "");
-                return;
-            }
-            var player = "https://www.youtube.com/embed/" + id + "?autoplay=1&amp;origin=" + Uri.EscapeDataString(VideoOrigin);
-            var html = "<!doctype html><html><head><meta charset='utf-8'><title>YouTube</title>" +
-                "<style>html,body,iframe{width:100%;height:100%;margin:0;border:0;background:#111;display:block}</style></head>" +
-                "<body><iframe title='YouTube' referrerpolicy='strict-origin-when-cross-origin' allow='autoplay; encrypted-media; picture-in-picture; fullscreen' allowfullscreen src='" +
-                player + "'></iframe></body></html>";
-            args.Response = browser.Environment.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes(html)),
-                200, "OK", "Content-Type: text/html; charset=utf-8\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" +
-                "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-src https://www.youtube.com");
-        };
-    }
-
-    private WebView2 AddWebView(string page)
-    {
-        var browser = new WebView2();
+        var browser = new WebView2CompositionControl();
         browser.CoreWebView2InitializationCompleted += (_, e) =>
         {
             if (!e.IsSuccess) return;
             browser.CoreWebView2.Settings.IsWebMessageEnabled = false;
-            if (page == "youtube") ConfigureEmbeddedVideo(browser.CoreWebView2);
+            if (page == "youtube")
+                browser.CoreWebView2.SourceChanged += (_, _) =>
+                {
+                    var source = browser.CoreWebView2.Source;
+                    videoLink = VideoAddress.TryParse(source, out var id) ? "https://www.youtube.com/watch?v=" + id : null;
+                };
             browser.CoreWebView2.Settings.AreHostObjectsAllowed = false;
             browser.CoreWebView2.NavigationStarting += (_, args) =>
             {
@@ -314,7 +220,7 @@ internal sealed partial class BarPanels : IDisposable
             browser.CoreWebView2.NewWindowRequested += (_, args) =>
             {
                 args.Handled = true;
-                if (page == "internet" && Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http")
+                if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http")
                     browser.Source = uri;
             };
             browser.CoreWebView2.NavigationCompleted += (_, args) =>
@@ -341,10 +247,11 @@ internal sealed partial class BarPanels : IDisposable
     private async Task Navigate()
     {
         var value = address.Text.Trim();
-        if (value.Length == 0) return;
+        if (value.Length == 0)
+            value = settings().SearchEngine switch { "Bing" => "https://www.bing.com/", "DuckDuckGo" => "https://duckduckgo.com/", _ => "https://www.google.com/" };
         var candidate = value.Contains("://", StringComparison.Ordinal) ? value : "https://" + value;
         if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) || !uri.Host.Contains('.') && !uri.IsLoopback)
-            uri = new Uri("https://www.google.com/search?q=" + Uri.EscapeDataString(value));
+            uri = new Uri((settings().SearchEngine switch { "Bing" => "https://www.bing.com/search?q=", "DuckDuckGo" => "https://duckduckgo.com/?q=", _ => "https://www.google.com/search?q=" }) + Uri.EscapeDataString(value));
         if (uri.Scheme is not ("http" or "https")) throw new ArgumentException("Use um endereço HTTP ou HTTPS.");
         var invocation = panelInvocation;
         var browser = internet ??= AddWebView("internet");
@@ -502,16 +409,16 @@ internal sealed partial class BarPanels : IDisposable
         disposed = true;
         timer.Stop();
         lifetime.Cancel();
-        lookup?.Dispose();
         lifetime.Dispose();
         sessionVersion++;
         session?.Dispose();
         terminalView?.Dispose();
+        translatorView?.Dispose();
         musicClock?.Stop();
         music.Close();
         video?.Dispose();
         internet?.Dispose();
-        window.Close();
+        translatorView?.Dispose();
     }
 }
 

@@ -7,10 +7,10 @@ import re
 import shutil
 import subprocess
 
-from PySide6.QtCore import QObject, QProcess, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, QProcess, QStorageInfo, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QVBoxLayout)
+    QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QVBoxLayout, QWidget)
 
 from platform_actions import package_query
 
@@ -97,8 +97,11 @@ class DesktopPanel:
         self.use_wallpaper.setEnabled(False)
         self.row(layout, self.button("Subir", lambda: self.open_folder(self.folder.parent)),
                  self.folder_path, self.button("Ir", lambda: self.open_folder(self.folder_path.text())))
-        self.row(layout, self.button("Pasta pessoal", lambda: self.open_folder(Path.home())),
+        self.row(layout, self.button("Início", lambda: self.open_folder(self.initial_folder())),
                  self.button("Galeria de wallpapers", self.wallpaper_gallery), self.use_wallpaper)
+        self.mount_row = QHBoxLayout()
+        layout.addLayout(self.mount_row)
+        self.refresh_mounts()
         layout.addWidget(self.folder_status)
         body = QHBoxLayout()
         body.addWidget(self.folder_files, 3)
@@ -107,6 +110,27 @@ class DesktopPanel:
         self.folder_path.returnPressed.connect(lambda: self.open_folder(self.folder_path.text()))
         self.folder_files.itemActivated.connect(self.open_folder_entry)
         self.folder_files.currentItemChanged.connect(lambda item, _: self.preview_folder_entry(item))
+
+    @staticmethod
+    def mounted_paths():
+        return sorted({volume.rootPath() for volume in QStorageInfo.mountedVolumes()
+                       if volume.isValid() and volume.isReady() and
+                       (volume.rootPath() == "/" or bytes(volume.device()).startswith(b"/dev/"))})
+
+    def initial_folder(self):
+        path = self.preferences.value("browse_home", str(Path.home()), str)
+        candidate = Path(path).expanduser()
+        return candidate if candidate.is_dir() else Path.home()
+
+    def refresh_mounts(self):
+        while self.mount_row.count():
+            item = self.mount_row.takeAt(0)
+            item.widget().deleteLater()
+        all_mounts = self.preferences.value("browse_all_mounts", True, bool)
+        selected = self.preferences.value("browse_mounts", [], list)
+        for path in self.mounted_paths():
+            if all_mounts or path in selected:
+                self.mount_row.addWidget(self.button(path, lambda root=path: self.open_folder(root)))
 
     def open_folder(self, path):
         path = Path(path).expanduser().absolute()
